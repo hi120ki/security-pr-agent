@@ -1,0 +1,59 @@
+name: Patch and Push Docker Image
+
+on:
+  schedule:
+    # Every 1st day of month 03:00 JST → 18:00 UTC
+    - cron: "0 18 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  patch-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      # Login to GHCR
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Get today's date in YYYY-MM-DD format
+      - name: Generate date tag
+        id: date
+        run: |
+          echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      # Execute patch-image.sh to replace local files
+      - name: Patch the Docker image
+        run: |
+          bash patch-image.sh \
+            codiumai/pr-agent:0.28-github_action \
+            /app/pr_agent/settings/pr_reviewer_prompts.toml \
+            pr_reviewer_prompts.toml \
+            security-pr-agent:latest
+
+      # Tag for GHCR
+      - name: Tag image for GHCR
+        run: |
+          docker tag \
+            security-pr-agent:latest \
+            ghcr.io/hi120ki/security-pr-agent:${{ steps.date.outputs.date }}
+          docker tag \
+            security-pr-agent:latest \
+            ghcr.io/hi120ki/security-pr-agent:latest
+
+      # Push image
+      - name: Push image to GHCR
+        run: |
+          docker push ghcr.io/hi120ki/security-pr-agent:${{ steps.date.outputs.date }}
+          docker push ghcr.io/hi120ki/security-pr-agent:latest
