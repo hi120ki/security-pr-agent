@@ -6,13 +6,19 @@ on:
     - cron: "0 18 1 * *"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
   patch-and-push:
     runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+      packages: write
+      attestations: write
+
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: ${{ github.repository }}
 
     steps:
       # Checkout repository
@@ -47,13 +53,32 @@ jobs:
         run: |
           docker tag \
             security-pr-agent:latest \
-            ghcr.io/hi120ki/security-pr-agent:${{ steps.date.outputs.date }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.date.outputs.date }}
           docker tag \
             security-pr-agent:latest \
-            ghcr.io/hi120ki/security-pr-agent:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
       # Push image
       - name: Push image to GHCR
+        id: push
         run: |
-          docker push ghcr.io/hi120ki/security-pr-agent:${{ steps.date.outputs.date }}
-          docker push ghcr.io/hi120ki/security-pr-agent:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.date.outputs.date }}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          # Output the digest of the latest image
+          echo "digest=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest | cut -d'@' -f2)" >> $GITHUB_OUTPUT
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@f325610c9f50a54015d37c8d16cb3b0e2c8f4de0 # v0.18.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: "cyclonedx-json"
+          output-file: "sbom.cyclonedx.json"
+
+      - name: Attest
+        uses: actions/attest-sbom@115c3be05ff3974bcbd596578934b3f9ce39bf68 # v2.2.0
+        id: attest
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          sbom-path: "sbom.cyclonedx.json"
+          push-to-registry: true
