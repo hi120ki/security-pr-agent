@@ -51,7 +51,7 @@ jobs:
       - name: Patch the Docker image
         run: |
           bash patch-image.sh \
-            codiumai/pr-agent:0.28-github_action \
+            codiumai/pr-agent:0.29-github_action \
             /app/pr_agent/settings/pr_reviewer_prompts.toml \
             pr_reviewer_prompts.toml \
             security-pr-agent:latest
